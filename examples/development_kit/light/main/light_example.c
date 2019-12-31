@@ -1,26 +1,16 @@
-/*
- * ESPRESSIF MIT License
- *
- * Copyright (c) 2018 <ESPRESSIF SYSTEMS (SHANGHAI) PTE LTD>
- *
- * Permission is hereby granted for use on all ESPRESSIF SYSTEMS products, in which case,
- * it is free of charge, to any person obtaining a copy of this software and associated
- * documentation files (the "Software"), to deal in the Software without restriction, including
- * without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the Software is furnished
- * to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included in all copies or
- * substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
- * FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
- * COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
- * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
- *
- */
+// Copyright 2017 Espressif Systems (Shanghai) PTE LTD
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #include "mdf_common.h"
 #include "mwifi.h"
@@ -40,12 +30,13 @@
 
 #define LIGHT_TID                     (1)
 #define LIGHT_NAME                    "light"
-#define LIGHT_RESTART_COUNT_FALLBACK  (10)
-#define LIGHT_RESTART_COUNT_RESET     (3)
+#define LIGHT_RESTART_COUNT_FALLBACK  CONFIG_LIGHT_RESTART_COUNT_FALLBACK
+#define LIGHT_RESTART_COUNT_RESET     CONFIG_LIGHT_RESTART_COUNT_RESET
 
 static const char *TAG                       = "light_example";
 static TaskHandle_t g_root_write_task_handle = NULL;
 static TaskHandle_t g_root_read_task_handle  = NULL;
+static bool g_config_from_blufi_flag         = false;
 
 /**
  * @brief Read data from mesh network, forward data to extern IP network by http or udp.
@@ -344,7 +335,7 @@ static void espnow_to_mwifi_task(void *arg)
 
         for (int i = 0; i < addrs_num; ++i) {
             ret = mwifi_write(addrs_list  + 6 * i, &mwifi_type, data, size, true);
-            MDF_ERROR_CONTINUE(ret != MDF_OK, "<%s> mwifi_write", esp_err_to_name(ret));
+            MDF_ERROR_CONTINUE(ret != MDF_OK, "<%s> mwifi_write", mdf_err_to_name(ret));
         }
 
         MDF_FREE(data);
@@ -402,7 +393,7 @@ mdf_err_t mlink_ble_write(void *data, size_t size)
         MDF_FREE(addr_list_json[i]);
 
         ret = mwifi_write(addr, &mwifi_type, body, strlen(body), true);
-        MDF_ERROR_GOTO(ret != MDF_OK, EXIT, "<%s> mwifi_write", esp_err_to_name(ret));
+        MDF_ERROR_GOTO(ret != MDF_OK, EXIT, "<%s> mwifi_write", mdf_err_to_name(ret));
     }
 
 EXIT:
@@ -436,6 +427,43 @@ static mdf_err_t event_loop_cb(mdf_event_loop_t event, void *ctx)
             MDF_LOGI("Parent is connected on station interface");
             light_driver_breath_stop();
 
+#ifdef CONFIG_LIGHT_NETWORKING_TIME_OPTIMIZE_ENABLE
+
+            if (esp_mesh_is_root_fixed()) {
+                /**
+                 * TODO：Fix the problem that esp_mesh does not update at the bottom,
+                 *       IE does not update. This is a temporary solution. This code
+                 *       needs to be deleted after esp-idf is fixed.
+                 */
+                extern mesh_assoc_t g_mesh_ie;
+                g_mesh_ie.rc_rssi = mwifi_get_parent_rssi();
+
+                esp_mesh_fix_root(false);
+                ESP_ERROR_CHECK(esp_mesh_set_self_organized(true, false));
+            }
+
+            mwifi_node_type_t mesh_type = MWIFI_MESH_IDLE;
+
+            if (esp_mesh_is_root()) {
+                mesh_type = MWIFI_MESH_ROOT;
+            } else {
+                mesh_type = MWIFI_MESH_IDLE;
+            }
+
+            mwifi_config_t ap_config  = {0x0};
+            mdf_info_load("ap_config", &ap_config, sizeof(mwifi_config_t));
+
+            if (esp_mesh_get_type() != MESH_LEAF && esp_mesh_get_layer() == CONFIG_MWIFI_MAX_LAYER) {
+                ESP_ERROR_CHECK(esp_mesh_set_type(MESH_LEAF));
+            }
+
+            if (ap_config.mesh_type != mesh_type) {
+                ap_config.mesh_type = mesh_type;
+                mdf_info_save("ap_config", &ap_config, sizeof(mwifi_config_t));
+            }
+
+#endif /**< CONFIG_LIGHT_NETWORKING_TIME_OPTIMIZE_ENABLE */
+
 #ifdef CONFIG_LIGHT_BLE_GATEWAY
 
             if (!esp_mesh_is_root()) {
@@ -468,18 +496,17 @@ static mdf_err_t event_loop_cb(mdf_event_loop_t event, void *ctx)
         case MDF_EVENT_MWIFI_PARENT_DISCONNECTED:
             MDF_LOGI("Parent is disconnected on station interface");
 
-            if (!esp_mesh_is_root()) {
-                break;
-            }
-
+            /** When the root node switches, sometimes no disconnected packets are received */
             ret = mlink_notice_deinit();
             MDF_ERROR_BREAK(ret != MDF_OK, "<%s> mlink_notice_deinit", mdf_err_to_name(ret));
 
             ret = mlink_httpd_stop();
             MDF_ERROR_BREAK(ret != MDF_OK, "<%s> mlink_httpd_stop", mdf_err_to_name(ret));
 
-            ret = mwifi_post_root_status(false);
-            MDF_ERROR_BREAK(ret != MDF_OK, "<%s> mwifi_post_root_status", mdf_err_to_name(ret));
+            if (esp_mesh_is_root()) {
+                ret = mwifi_post_root_status(false);
+                MDF_ERROR_BREAK(ret != MDF_OK, "<%s> mwifi_post_root_status", mdf_err_to_name(ret));
+            }
 
             break;
 
@@ -490,6 +517,7 @@ static mdf_err_t event_loop_cb(mdf_event_loop_t event, void *ctx)
 
             mdf_info_load("ap_config", &ap_config, sizeof(mwifi_config_t));
             esp_wifi_get_channel(&ap_config.channel, &second);
+            esp_mesh_get_parent_bssid((mesh_addr_t *)ap_config.router_bssid);
             mwifi_set_config(&ap_config);
             mdf_info_save("ap_config", &ap_config, sizeof(mwifi_config_t));
             break;
@@ -540,7 +568,7 @@ static mdf_err_t event_loop_cb(mdf_event_loop_t event, void *ctx)
             }
 
             if (!g_root_read_task_handle) {
-                xTaskCreate(root_read_task, "root_read", 8 * 1024,
+                xTaskCreate(root_read_task, "root_read", 4 * 1024,
                             NULL, CONFIG_MDF_TASK_DEFAULT_PRIOTY, &g_root_read_task_handle);
             }
 
@@ -559,6 +587,8 @@ static mdf_err_t event_loop_cb(mdf_event_loop_t event, void *ctx)
             break;
 
         case MDF_EVENT_MCONFIG_BLUFI_FINISH:
+            g_config_from_blufi_flag = true;
+
         case MDF_EVENT_MCONFIG_CHAIN_FINISH:
             light_driver_breath_start(0, 255, 0); /**< green blink */
             break;
@@ -576,7 +606,7 @@ static mdf_err_t event_loop_cb(mdf_event_loop_t event, void *ctx)
                 .protocol = MLINK_PROTO_NOTICE,
             };
             ret = mwifi_write(NULL, &mwifi_type, "ota_status", strlen("ota_status"), true);
-            MDF_ERROR_BREAK(ret != MDF_OK, "<%s> mwifi_write", esp_err_to_name(ret));
+            MDF_ERROR_BREAK(ret != MDF_OK, "<%s> mwifi_write", mdf_err_to_name(ret));
             break;
         }
 
@@ -623,7 +653,7 @@ static mdf_err_t event_loop_cb(mdf_event_loop_t event, void *ctx)
                 .protocol = MLINK_PROTO_NOTICE,
             };
             ret = mwifi_write(NULL, &mwifi_type, "sniffer", strlen("sniffer"), true);
-            MDF_ERROR_BREAK(ret != MDF_OK, "<%s> mwifi_write", esp_err_to_name(ret));
+            MDF_ERROR_BREAK(ret != MDF_OK, "<%s> mwifi_write", mdf_err_to_name(ret));
             break;
         }
 
@@ -679,8 +709,7 @@ void app_main()
     MDF_ERROR_ASSERT(light_driver_init(&driver_config));
     light_driver_set_switch(true);
 
-    if (mdf_info_load("init_config", &init_config, sizeof(mwifi_init_config_t)) == MDF_OK
-            && mdf_info_load("ap_config", &ap_config, sizeof(mwifi_config_t)) == MDF_OK) {
+    if (mdf_info_load("ap_config", &ap_config, sizeof(mwifi_config_t)) == MDF_OK) {
         if (restart_is_exception()) {
             light_driver_set_rgb(255, 0, 0); /**< red */
         } else {
@@ -713,19 +742,23 @@ void app_main()
      *              obtain the network configuration information through the blufi or mconfig chain.
      *          3.Indicate the status of the device by means of a light
      */
-    if (mdf_info_load("init_config", &init_config, sizeof(mwifi_init_config_t)) != MDF_OK
-            || mdf_info_load("ap_config", &ap_config, sizeof(mwifi_config_t)) != MDF_OK) {
+    if (mdf_info_load("ap_config", &ap_config, sizeof(mwifi_config_t)) != MDF_OK) {
         MDF_ERROR_ASSERT(get_network_config(&init_config, &ap_config, LIGHT_TID, LIGHT_NAME));
         MDF_LOGI("mconfig, ssid: %s, password: %s, mesh_id: " MACSTR,
                  ap_config.router_ssid, ap_config.router_password,
                  MAC2STR(ap_config.mesh_id));
 
+#ifdef CONFIG_LIGHT_NETWORKING_TIME_OPTIMIZE_ENABLE
+
+        if (g_config_from_blufi_flag) {
+            ap_config.mesh_type = MESH_ROOT;
+        }
+
+#endif /**< CONFIG_LIGHT_NETWORKING_TIME_OPTIMIZE_ENABLE */
+
         /**
          * @brief Save configuration information to nvs flash.
-         *
-         * @note `init_config` uses MWIFI_INIT_CONFIG_DEFAULT(), no need to use APP configuration under normal circumstances
          */
-        mdf_info_save("init_config", &init_config, sizeof(mwifi_init_config_t));
         mdf_info_save("ap_config", &ap_config, sizeof(mwifi_config_t));
     }
 
@@ -783,6 +816,8 @@ void app_main()
     MDF_ERROR_ASSERT(mwifi_set_config(&ap_config));
     MDF_ERROR_ASSERT(mwifi_start());
 
+    mwifi_print_config();
+
     /**
      * @brief Add a default group for the meshkit_button to control all devices
      */
@@ -792,7 +827,7 @@ void app_main()
     /**
      * @brief Handling data between wifi mesh devices.
      */
-    xTaskCreate(node_handle_task, "node_handle", 8 * 1024,
+    xTaskCreate(node_handle_task, "node_handle", 4 * 1024,
                 NULL, CONFIG_MDF_TASK_DEFAULT_PRIOTY, NULL);
 
     /**

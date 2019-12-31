@@ -1,26 +1,16 @@
-/*
- * ESPRESSIF MIT License
- *
- * Copyright (c) 2018 <ESPRESSIF SYSTEMS (SHANGHAI) PTE LTD>
- *
- * Permission is hereby granted for use on all ESPRESSIF SYSTEMS products, in which case,
- * it is free of charge, to any person obtaining a copy of this software and associated
- * documentation files (the "Software"), to deal in the Software without restriction, including
- * without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the Software is furnished
- * to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included in all copies or
- * substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
- * FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
- * COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
- * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
- *
- */
+// Copyright 2017 Espressif Systems (Shanghai) PTE LTD
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #ifndef __MCONFIG_BLUFI_H__
 #define __MCONFIG_BLUFI_H__
@@ -50,6 +40,7 @@ extern "C" {
 #define MDF_EVENT_MCONFIG_BLUFI_STA_CONNECTED    (MDF_EVENT_MCONFIG_BASE + 0x204)
 #define MDF_EVENT_MCONFIG_BLUFI_STA_DISCONNECTED (MDF_EVENT_MCONFIG_BASE + 0x205)
 #define MDF_EVENT_MCONFIG_BLUFI_FINISH           (MDF_EVENT_MCONFIG_BASE + 0x206)
+#define MDF_EVENT_MCONFIG_BLUFI_RECV             (MDF_EVENT_MCONFIG_BASE + 0x207)
 
 /**
  * @brief Bluetooth configuration network related configuration
@@ -63,6 +54,14 @@ typedef struct {
     uint8_t custom_data[MCONFIG_BLUFI_CUSTOM_SIZE]; /**< Placed in a Bluetooth broadcast package */
     bool only_beacon;                               /**< Send only beacon does not support connection */
 } mconfig_blufi_config_t;
+
+/**
+ * @brief Mconfig_blufi event callback parameters
+ */
+typedef struct {
+    uint8_t *data; /**< Custom data value */
+    size_t size;   /**< The length of custom data */
+} mconfig_blufi_data_t;
 
 /**
  * @brief  initialize Bluetooth network configuratxion
@@ -84,6 +83,20 @@ mdf_err_t mconfig_blufi_init(const mconfig_blufi_config_t *config);
  *     - MDF_FAIL
  */
 mdf_err_t mconfig_blufi_deinit(void);
+
+/**
+ * @brief  This function is called to custom data,
+ *         send a custom request to the APP to verify the device
+ *
+ * @param  data  Custom data value
+ * @param  size  The length of custom data
+ *
+ * @return
+ *     - MDF_OK
+ *     - MDF_FAIL
+ *     - MDF_ERR_INVALID_ARG
+ */
+mdf_err_t mconfig_blufi_send(uint8_t *data, size_t size);
 
 #ifdef __cplusplus
 }

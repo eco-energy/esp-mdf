@@ -1,26 +1,16 @@
-/*
- * ESPRESSIF MIT License
- *
- * Copyright (c) 2018 <ESPRESSIF SYSTEMS (SHANGHAI) PTE LTD>
- *
- * Permission is hereby granted for use on all ESPRESSIF SYSTEMS products, in which case,
- * it is free of charge, to any person obtaining a copy of this software and associated
- * documentation files (the "Software"), to deal in the Software without restriction, including
- * without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the Software is furnished
- * to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included in all copies or
- * substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
- * FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
- * COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
- * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
- *
- */
+// Copyright 2017 Espressif Systems (Shanghai) PTE LTD
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #include "esp_wifi.h"
 #include "esp_now.h"
@@ -51,17 +41,13 @@ mdf_err_t __mlink_espnow_write(const uint8_t *addrs_list, size_t addrs_num, cons
     mdf_err_t ret      = MDF_OK;
     size_t espnow_size = sizeof(mlink_espnow_t) + size + addrs_num * ESP_NOW_ETH_ALEN;
     mlink_espnow_t *espnow_data = MDF_MALLOC(espnow_size);
+    MDF_ERROR_CHECK(!espnow_data, MDF_ERR_NO_MEM, "");
 
     espnow_data->size      = size;
+    espnow_data->type      = type;
     espnow_data->addrs_num = addrs_num;
     memcpy(espnow_data->data, data, size);
     memcpy(espnow_data->data + size, addrs_list, addrs_num * ESP_NOW_ETH_ALEN);
-
-    if (!type) {
-        memset(&espnow_data->type, 0, sizeof(espnow_data->type));
-    } else {
-        espnow_data->type = type;
-    }
 
     /**< write date package to espnow. */
     ret = mespnow_write(MESPNOW_TRANS_PIPE_CONTROL, g_espnow_config.parent_bssid,
@@ -81,13 +67,14 @@ mdf_err_t __mlink_espnow_read(uint8_t **addrs_list, size_t *addrs_num, uint8_t *
     MDF_PARAM_CHECK(addrs_list);
 
     mdf_err_t ret      = MDF_OK;
-    size_t espnow_size = ESP_NOW_MAX_DATA_LEN;
+    size_t espnow_size = ESP_NOW_MAX_DATA_LEN * 4;
     uint8_t src_addr[ESP_NOW_ETH_ALEN] = {0x0};
     *size = 0;
     *data = NULL;
     *addrs_num = 0;
 
-    mlink_espnow_t *espnow_data = MDF_MALLOC(ESP_NOW_MAX_DATA_LEN);
+    mlink_espnow_t *espnow_data = MDF_MALLOC(ESP_NOW_MAX_DATA_LEN * 4);
+    MDF_ERROR_CHECK(!espnow_data, MDF_ERR_NO_MEM, "");
 
     /**< read data from espnow */
     ret = mespnow_read(MESPNOW_TRANS_PIPE_CONTROL, src_addr,
@@ -98,6 +85,12 @@ mdf_err_t __mlink_espnow_read(uint8_t **addrs_list, size_t *addrs_num, uint8_t *
     *data = MDF_MALLOC(espnow_data->size);
     *addrs_num  = espnow_data->addrs_num;
     *addrs_list = MDF_MALLOC(*addrs_num * ESP_NOW_ETH_ALEN);
+
+    if (!(*data) || !(*addrs_list)) {
+        ret = MDF_ERR_NO_MEM;
+        MDF_FREE(*data);
+        MDF_FREE(*addrs_list);
+    }
 
     if (type) {
         *type = espnow_data->type;

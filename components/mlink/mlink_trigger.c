@@ -1,26 +1,16 @@
-/*
- * ESPRESSIF MIT License
- *
- * Copyright (c) 2018 <ESPRESSIF SYSTEMS (SHANGHAI) PTE LTD>
- *
- * Permission is hereby granted for use on all ESPRESSIF SYSTEMS products, in which case,
- * it is free of charge, to any person obtaining a copy of this software and associated
- * documentation files (the "Software"), to deal in the Software without restriction, including
- * without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the Software is furnished
- * to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included in all copies or
- * substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
- * FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
- * COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
- * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
- *
- */
+// Copyright 2017 Espressif Systems (Shanghai) PTE LTD
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #include "mlink.h"
 #include "mwifi.h"
@@ -242,6 +232,7 @@ EXIT:
 mdf_err_t mlink_trigger_add(const char *trigger_raw_data)
 {
     MDF_PARAM_CHECK(trigger_raw_data);
+    MDF_ERROR_CHECK(!g_trigger_list, MDF_ERR_NOT_INIT, "mlink_trigger is not initialized");
 
     mdf_err_t ret = MDF_OK;
     mlink_trigger_t *trigger_list = g_trigger_list;
@@ -414,7 +405,7 @@ mdf_err_t mlink_trigger_handle(mlink_communicate_t communicate)
             MDF_FREE(trigger_idex->execute_content);
         }
 
-        MDF_ERROR_CHECK(ret != ESP_OK, ret, "<%s> mlink_espnow_write", mdf_err_to_name(ret));
+        MDF_ERROR_CHECK(ret != ESP_OK, ret, "mlink_espnow_write");
     }
 
     return MDF_OK;
@@ -460,7 +451,5 @@ mdf_err_t mlink_trigger_init()
 
 bool mlink_trigger_is_exist()
 {
-    MDF_ERROR_CHECK(!g_trigger_list, false, "Mlink_trigger is not initialized");
-
-    return (g_trigger_list->next == NULL) ? false : true;
+    return (!g_trigger_list || g_trigger_list->next == NULL) ? false : true;
 }

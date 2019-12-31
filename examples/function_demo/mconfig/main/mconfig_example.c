@@ -1,26 +1,16 @@
-/*
- * ESPRESSIF MIT License
- *
- * Copyright (c) 2018 <ESPRESSIF SYSTEMS (SHANGHAI) PTE LTD>
- *
- * Permission is hereby granted for use on all ESPRESSIF SYSTEMS products, in which case,
- * it is free of charge, to any person obtaining a copy of this software and associated
- * documentation files (the "Software"), to deal in the Software without restriction, including
- * without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the Software is furnished
- * to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included in all copies or
- * substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
- * FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
- * COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
- * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
- *
- */
+// Copyright 2017 Espressif Systems (Shanghai) PTE LTD
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #include "esp_bt.h"
 
@@ -79,6 +69,16 @@ static mdf_err_t event_loop_cb(mdf_event_loop_t event, void *ctx)
         case MDF_EVENT_MCONFIG_BLUFI_STA_CONNECTED:
             MDF_LOGI("MDF_EVENT_MCONFIG_BLUFI_STA_CONNECTED");
             break;
+
+        /**< Add a custom communication process */
+        case MDF_EVENT_MCONFIG_BLUFI_RECV: {
+            mconfig_blufi_data_t *blufi_data = (mconfig_blufi_data_t *)ctx;
+            MDF_LOGI("recv data: %.*s", blufi_data->size, blufi_data->data);
+
+            // ret = mconfig_blufi_send(blufi_data->data, blufi_data->size);
+            // MDF_ERROR_BREAK(ret != MDF_OK, "<%> mconfig_blufi_send", mdf_err_to_name(ret));
+            break;
+        }
 
         default:
             break;
@@ -166,11 +166,11 @@ void app_main()
 
     uint8_t sta_mac[6] = {0};
     MDF_ERROR_ASSERT(esp_wifi_get_mac(ESP_IF_WIFI_STA, sta_mac));
-    sprintf(name, "ESP-MESH_%02x%02x", sta_mac[4], sta_mac[5]);
+    sprintf(name, "ESP-WIFI-MESH_%02x%02x", sta_mac[4], sta_mac[5]);
 
     /**
      * @note `custom_data` is used for specific application custom data, non-essential fields.
-     *       can be passed through the APP distribution network (ESP-MESH Config (The bottom
+     *       can be passed through the APP distribution network (ESP-WIFI-MESH Config (The bottom
      *       right corner of the configured page) > Custom Data)
      */
     MDF_ERROR_ASSERT(get_network_config(name, &mwifi_config, custom_data));

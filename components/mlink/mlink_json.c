@@ -1,26 +1,16 @@
-/*
- * ESPRESSIF MIT License
- *
- * Copyright (c) 2018 <ESPRESSIF SYSTEMS (SHANGHAI) PTE LTD>
- *
- * Permission is hereby granted for use on all ESPRESSIF SYSTEMS products, in which case,
- * it is free of charge, to any person obtaining a copy of this software and associated
- * documentation files (the "Software"), to deal in the Software without restriction, including
- * without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the Software is furnished
- * to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included in all copies or
- * substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
- * FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
- * COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
- * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
- *
- */
+// Copyright 2017 Espressif Systems (Shanghai) PTE LTD
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #include "cJSON.h"
 #include "mlink_json.h"
@@ -100,7 +90,7 @@ esp_err_t __mlink_json_parse(const char *json_str, const char *key,
 
                 case cJSON_String:
                     if (value_type == MLINK_JSON_TYPE_POINTER) {
-                        *((char **)value) = MDF_MALLOC(strlen(pSub->valuestring) + 1);
+                        *((char **)value) = MDF_REALLOC_RETRY(NULL, strlen(pSub->valuestring) + 1);
                         memcpy(*((char **)value), pSub->valuestring, strlen(pSub->valuestring) + 1);
                     } else {
                         memcpy(value, pSub->valuestring, strlen(pSub->valuestring) + 1);
@@ -134,8 +124,9 @@ esp_err_t __mlink_json_parse(const char *json_str, const char *key,
                         }
 
                         if (item->type == cJSON_String) {
-                            *array_index = MDF_CALLOC(1, strlen(item->valuestring) + 1);
+                            *array_index = MDF_REALLOC_RETRY(NULL, strlen(item->valuestring) + 1);
                             strcpy(*array_index, item->valuestring);
+                            (*array_index)[strlen(item->valuestring)] = '\0';
                             array_index++;
                             continue;
                         }
@@ -183,7 +174,7 @@ ssize_t __mlink_json_pack(char **json_ptr, const char *key, int value, int value
         if (!*json_ptr) {
             *json_ptr = MDF_CALLOC(1, value_len + strlen(key) + 16);
         } else {
-            *json_ptr = MDF_REALLOC(*json_ptr, value_len + strlen(key) + 16 + strlen(*json_ptr));
+            *json_ptr = MDF_REALLOC_RETRY(*json_ptr, value_len + strlen(key) + 16 + strlen(*json_ptr));
         }
 
         json_str = *json_ptr;
@@ -259,9 +250,10 @@ ssize_t mlink_json_pack_double(char **json_ptr, const char *key, double value)
     MDF_PARAM_CHECK(json_ptr);
 
     if (!*json_ptr) {
-        *json_ptr = MDF_CALLOC(1, strlen(key) + 32);
+        *json_ptr = MDF_REALLOC_RETRY(NULL, strlen(key) + 32);
+        memset(*json_ptr, 0, strlen(key) + 32);
     } else {
-        *json_ptr = MDF_REALLOC(*json_ptr, strlen(key) + 32 + strlen(*json_ptr));
+        *json_ptr = MDF_REALLOC_RETRY(*json_ptr, strlen(key) + 32 + strlen(*json_ptr));
     }
 
     char *json_str = *json_ptr;

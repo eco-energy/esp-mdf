@@ -1,26 +1,16 @@
-/*
- * ESPRESSIF MIT License
- *
- * Copyright (c) 2018 <ESPRESSIF SYSTEMS (SHANGHAI) PTE LTD>
- *
- * Permission is hereby granted for use on all ESPRESSIF SYSTEMS products, in which case,
- * it is free of charge, to any person obtaining a copy of this software and associated
- * documentation files (the "Software"), to deal in the Software without restriction, including
- * without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the Software is furnished
- * to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included in all copies or
- * substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
- * FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
- * COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
- * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
- *
- */
+// Copyright 2017 Espressif Systems (Shanghai) PTE LTD
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #ifndef __MDF_INFO_STORE_H__
 #define __MDF_INFO_STORE_H__
@@ -82,14 +72,14 @@ esp_err_t __mdf_info_load(const char *key, void *value, size_t len, uint32_t typ
 
 #define mdf_info_load(key, value, len) \
     __mdf_info_load(key, value, (size_t)(len), \
-                    + __builtin_types_compatible_p(typeof(len), int8_t) * LENGTH_TYPE_NUMBER \
-                    + __builtin_types_compatible_p(typeof(len), uint8_t) * LENGTH_TYPE_NUMBER \
-                    + __builtin_types_compatible_p(typeof(len), int16_t) * LENGTH_TYPE_NUMBER \
-                    + __builtin_types_compatible_p(typeof(len), uint16_t) * LENGTH_TYPE_NUMBER \
-                    + __builtin_types_compatible_p(typeof(len), int) * LENGTH_TYPE_NUMBER \
-                    + __builtin_types_compatible_p(typeof(len), uint32_t) * LENGTH_TYPE_NUMBER \
-                    + __builtin_types_compatible_p(typeof(len), int *) * LENGTH_TYPE_POINTER \
-                    + __builtin_types_compatible_p(typeof(len), uint32_t *) * LENGTH_TYPE_POINTER)
+                    builtin_types_compatible_p(len, int8_t) * LENGTH_TYPE_NUMBER \
+                    +builtin_types_compatible_p(len, uint8_t) * LENGTH_TYPE_NUMBER \
+                    + builtin_types_compatible_p(len, int16_t) * LENGTH_TYPE_NUMBER \
+                    + builtin_types_compatible_p(len, uint16_t) * LENGTH_TYPE_NUMBER \
+                    + builtin_types_compatible_p(len, int) * LENGTH_TYPE_NUMBER \
+                    + builtin_types_compatible_p(len, uint32_t) * LENGTH_TYPE_NUMBER \
+                    + builtin_types_compatible_p(len, int *) * LENGTH_TYPE_POINTER \
+                    + builtin_types_compatible_p(len, uint32_t *) * LENGTH_TYPE_POINTER)
 
 /*
  * @brief  Erase the information with given key

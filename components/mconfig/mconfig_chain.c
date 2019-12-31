@@ -1,26 +1,16 @@
-/*
- * ESPRESSIF MIT License
- *
- * Copyright (c) 2018 <ESPRESSIF SYSTEMS (SHANGHAI) PTE LTD>
- *
- * Permission is hereby granted for use on all ESPRESSIF SYSTEMS products, in which case,
- * it is free of charge, to any person obtaining a copy of this software and associated
- * documentation files (the "Software"), to deal in the Software without restriction, including
- * without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the Software is furnished
- * to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included in all copies or
- * substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
- * FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
- * COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
- * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
- *
- */
+// Copyright 2017 Espressif Systems (Shanghai) PTE LTD
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #include "esp_wifi.h"
 #include "miniz.h"
@@ -36,6 +26,7 @@
 #define VENDOR_OUI_TYPE_CONFIG       (0x0F)
 #define MCONFIG_CHAIN_EXIT_DELAY     (100)
 #define MCONFIG_CHAIN_SEND_RETRY_NUM (3)
+#define ESPNOW_BUFFER_LEN            (MESPNOW_PAYLOAD_LEN + CONFIG_MCONFIG_CUSTOM_EXTERN_LEN)
 
 /**
  * @brief Used to save wifi scanned information
@@ -132,9 +123,9 @@ static bool mconfig_device_verify(mconfig_whitelist_t *whitelist_data, size_t wh
 
 static void mconfig_chain_master_task(void *arg)
 {
-    mdf_err_t ret                  = 0;
+    mdf_err_t ret                  = MDF_ERR_NO_MEM;
     size_t espnow_size             = 0;
-    uint8_t *espnow_data           = MDF_MALLOC(MESPNOW_PAYLOAD_LEN);
+    uint8_t *espnow_data           = MDF_MALLOC(ESPNOW_BUFFER_LEN);
     char *pubkey_pem               = MDF_MALLOC(MCONFIG_RSA_PUBKEY_PEM_SIZE + 1);
     uint8_t src_addr[MWIFI_ADDR_LEN] = {0};
     uint32_t start_ticks           = xTaskGetTickCount();
@@ -153,6 +144,9 @@ static void mconfig_chain_master_task(void *arg)
         .vendor_oui      = {MDF_VENDOR_OUI[0], MDF_VENDOR_OUI[1], MDF_VENDOR_OUI[2]},
         .vendor_oui_type = VENDOR_OUI_TYPE_CONFIG,
     };
+
+    MDF_ERROR_GOTO(!espnow_data, EXIT, "");
+    MDF_ERROR_GOTO(!pubkey_pem, EXIT, "");
 
     MDF_LOGI("Start send network configured");
 
@@ -174,7 +168,7 @@ static void mconfig_chain_master_task(void *arg)
         /**
          * @brief 2. Receive device request for network information
          */
-        espnow_size = MESPNOW_PAYLOAD_LEN;
+        espnow_size = ESPNOW_BUFFER_LEN;
         ret = mespnow_read(MESPNOW_TRANS_PIPE_MCONFIG, src_addr, espnow_data,
                            &espnow_size, MCONFIG_CHAIN_EXIT_DELAY / portTICK_RATE_MS);
 
@@ -238,6 +232,8 @@ static void mconfig_chain_master_task(void *arg)
             continue;
         }
 
+
+
         /**
          * @brief 5. Send device whitelist information
          */
@@ -251,6 +247,7 @@ static void mconfig_chain_master_task(void *arg)
             /**< Compression date to improve transmission efficiency */
             mz_ulong whitelist_compress_size = compressBound(mconfig_data->whitelist_size);
             whitelist_compress_data          = MDF_CALLOC(1, (int)whitelist_compress_size);
+            MDF_ERROR_CONTINUE(!whitelist_compress_data, "");
 
             ret = compress(whitelist_compress_data, &whitelist_compress_size,
                            (uint8_t *)mconfig_data->whitelist_data, mconfig_data->whitelist_size);
@@ -277,6 +274,8 @@ static void mconfig_chain_master_task(void *arg)
 
 #endif /**< CONFIG_MCONFIG_WHITELIST_ENABLE */
     }
+
+EXIT:
 
     MDF_LOGI("End send network configured");
 
@@ -338,9 +337,9 @@ static bool scan_mesh_device(uint8_t *bssid, int8_t *rssi)
 
 static void mconfig_chain_slave_task(void *arg)
 {
-    mdf_err_t ret                   = MDF_OK;
+    mdf_err_t ret                   = MDF_ERR_NO_MEM;
     size_t espnow_size              = 0;
-    uint8_t *espnow_data            = MDF_MALLOC(MESPNOW_PAYLOAD_LEN);
+    uint8_t *espnow_data            = MDF_MALLOC(ESPNOW_BUFFER_LEN);
     char *privkey_pem               = MDF_CALLOC(1, MCONFIG_RSA_PRIVKEY_PEM_SIZE);
     char *pubkey_pem                = MDF_CALLOC(1, MCONFIG_RSA_PUBKEY_PEM_SIZE);
     g_mconfig_scan_queue            = xQueueCreate(10, sizeof(mconfig_scan_info_t));
@@ -352,6 +351,11 @@ static void mconfig_chain_slave_task(void *arg)
     size_t aes_iv_offset            = 0;
 
     mconfig_chain_data_t *chain_data = MDF_MALLOC(sizeof(mconfig_chain_data_t));
+
+    MDF_ERROR_GOTO(!espnow_data, EXIT, "");
+    MDF_ERROR_GOTO(!privkey_pem, EXIT, "");
+    MDF_ERROR_GOTO(!pubkey_pem, EXIT, "");
+    MDF_ERROR_GOTO(!chain_data, EXIT, "");
 
     ESP_ERROR_CHECK(mconfig_rsa_gen_key(privkey_pem, pubkey_pem));
     MDF_LOGI("Generate RSA public and private keys");
@@ -381,13 +385,13 @@ static void mconfig_chain_slave_task(void *arg)
          * @brief Clean up the receive buffer of ESP-NOW
          */
         do {
-            espnow_size = MESPNOW_PAYLOAD_LEN;
+            espnow_size = ESPNOW_BUFFER_LEN;
             ret = mespnow_read(MESPNOW_TRANS_PIPE_MCONFIG, dest_addr,
                                espnow_data, &espnow_size, 0);
         } while (ret == MDF_OK);
 
         /**< Remove headers and footers to reduce data length */
-        memset(espnow_data, 0, MESPNOW_PAYLOAD_LEN);
+        memset(espnow_data, 0, ESPNOW_BUFFER_LEN);
         memcpy(espnow_data, pubkey_pem + strlen(PEM_BEGIN_PUBLIC_KEY),
                MCONFIG_RSA_PUBKEY_PEM_DATA_SIZE);
         espnow_data[MCONFIG_RSA_PUBKEY_PEM_DATA_SIZE] = rssi;
@@ -408,7 +412,7 @@ static void mconfig_chain_slave_task(void *arg)
          * @brief 3. Receive network configuration information
          */
         ESP_ERROR_CHECK(mespnow_add_peer(ESP_IF_WIFI_STA, dest_addr, (uint8_t *)CONFIG_MCONFIG_CHAIN_LMK));
-        espnow_size = MESPNOW_PAYLOAD_LEN;
+        espnow_size = ESPNOW_BUFFER_LEN;
         ret = mespnow_read(MESPNOW_TRANS_PIPE_MCONFIG, dest_addr,
                            espnow_data, &espnow_size, 1000 / portTICK_RATE_MS);
 
@@ -442,12 +446,15 @@ static void mconfig_chain_slave_task(void *arg)
 #ifdef CONFIG_MCONFIG_WHITELIST_ENABLE
 
         chain_data = MDF_REALLOC(chain_data, sizeof(mconfig_chain_data_t) + chain_data->mconfig_data.whitelist_size);
+        MDF_ERROR_CONTINUE(!chain_data, "");
+
         int retry_count                  = MCONFIG_CHAIN_SEND_RETRY_NUM;
         mconfig_data_t *mconfig_data     = &chain_data->mconfig_data;
         mz_ulong whitelist_size          = mconfig_data->whitelist_size;
         mz_ulong whitelist_compress_size = 0;
         uint8_t *whitelist_compress_data = MDF_MALLOC(mconfig_data->whitelist_size + 64);
         uint8_t src_addr[ESP_NOW_ETH_ALEN] = {0};
+        MDF_ERROR_CONTINUE(!whitelist_compress_data, "");
 
         do {
             whitelist_compress_size = mconfig_data->whitelist_size + 64;
@@ -497,6 +504,8 @@ static void mconfig_chain_slave_task(void *arg)
 
     ESP_ERROR_CHECK(esp_wifi_set_promiscuous_rx_cb(NULL));
     ESP_ERROR_CHECK(esp_wifi_set_promiscuous(false));
+
+EXIT:
 
     MDF_FREE(pubkey_pem);
     MDF_FREE(privkey_pem);
@@ -587,11 +596,12 @@ mdf_err_t mconfig_chain_master(const mconfig_data_t *mconfig_data, TickType_t du
 
     size_t chain_size = sizeof(mconfig_chain_data_t) + mconfig_data->whitelist_size;
     mconfig_chain_data_t *chain_data = MDF_MALLOC(chain_size);
+    MDF_ERROR_CHECK(!chain_data, MDF_ERR_NO_MEM, "");
     memcpy(&chain_data->mconfig_data, mconfig_data, sizeof(mconfig_data_t) + mconfig_data->whitelist_size);
     g_chain_master_duration_ticks = duration_ticks;
     g_filter_rssi = -120;
 
-    xTaskCreatePinnedToCore(mconfig_chain_master_task, "mconfig_chain_master", 8 * 1024,
+    xTaskCreatePinnedToCore(mconfig_chain_master_task, "mconfig_chain_master", 4 * 1024,
                             chain_data, CONFIG_MDF_TASK_DEFAULT_PRIOTY,
                             NULL, CONFIG_MDF_TASK_PINNED_TO_CORE);
 

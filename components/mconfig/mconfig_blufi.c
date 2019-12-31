@@ -1,26 +1,16 @@
-/*
- * ESPRESSIF MIT License
- *
- * Copyright (c) 2018 <ESPRESSIF SYSTEMS (SHANGHAI) PTE LTD>
- *
- * Permission is hereby granted for use on all ESPRESSIF SYSTEMS products, in which case,
- * it is free of charge, to any person obtaining a copy of this software and associated
- * documentation files (the "Software"), to deal in the Software without restriction, including
- * without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the Software is furnished
- * to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included in all copies or
- * substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
- * FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
- * COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
- * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
- *
- */
+// Copyright 2017 Espressif Systems (Shanghai) PTE LTD
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #include "sdkconfig.h"
 
@@ -53,6 +43,8 @@
 #define BLUFI_STA_AP_FOUND_ERR    (0x11)
 #define BLUFI_STA_TOOMANY_ERR     (0x12)
 #define BLUFI_STA_CONFIG_ERR      (0x13)
+
+#define ESP_BLUFI_EVENT_RECV_MDF_CUSTOM ESP_BLUFI_EVENT_RECV_CA_CERT
 
 /*
    The SEC_TYPE_xxx is for self-defined packet data type in the procedure of "BLUFI negotiate key"
@@ -221,9 +213,9 @@ static void mconfig_blufi_dh_negotiate_data_handler(uint8_t *input_data, ssize_t
             MDF_LOGD("SEC_TYPE_DH_PARAM_DATA");
             mdf_err_t ret = MDF_OK;
             uint8_t aes_key[MCONFIG_AES_KEY_LEN] = {0};
-            uint8_t *param   = MDF_MALLOC(s_dh_param_len);
-            uint8_t *pubkey  = MDF_MALLOC(MCONFIG_DH_PUBKEY_LEN);
-            uint8_t *privkey = MDF_MALLOC(MCONFIG_DH_PRIVKEY_LEN);
+            uint8_t *param   = MDF_REALLOC_RETRY(NULL, s_dh_param_len);
+            uint8_t *pubkey  = MDF_REALLOC_RETRY(NULL, MCONFIG_DH_PUBKEY_LEN);
+            uint8_t *privkey = MDF_REALLOC_RETRY(NULL, MCONFIG_DH_PRIVKEY_LEN);
 
             memcpy(param, input_data + 1, input_len - 1);
 
@@ -296,8 +288,10 @@ static uint16_t mconfig_blufi_crc_checksum(uint8_t iv8, uint8_t *data, int len)
 
 static mdf_err_t mconfig_blufi_security_init(void)
 {
-    g_rsa_privkey   = MDF_CALLOC(1, MCONFIG_RSA_PRIVKEY_PEM_SIZE);
-    g_rsa_pubkey    = MDF_CALLOC(1, MCONFIG_RSA_PUBKEY_PEM_SIZE);
+    g_rsa_privkey = MDF_CALLOC(1, MCONFIG_RSA_PRIVKEY_PEM_SIZE);
+    MDF_ERROR_CHECK(!g_rsa_privkey, MDF_ERR_NO_MEM, "");
+    g_rsa_pubkey  = MDF_CALLOC(1, MCONFIG_RSA_PUBKEY_PEM_SIZE);
+    MDF_ERROR_CHECK(!g_rsa_pubkey, MDF_ERR_NO_MEM, "");
     mdf_err_t ret = mconfig_rsa_gen_key(g_rsa_privkey, g_rsa_pubkey);
 
     if (ret != ESP_OK) {
@@ -601,7 +595,18 @@ static void mconfig_blufi_event_callback(esp_blufi_cb_event_t event, esp_blufi_c
             esp_blufi_close(s_server_if, s_conn_id);
             break;
 
-        case ESP_BLUFI_EVENT_RECV_USERNAME:
+        case ESP_BLUFI_EVENT_RECV_MDF_CUSTOM: {
+            MDF_LOGD("data_len: %d, custom_data: %.*s",
+                     param->custom_data.data_len, param->custom_data.data_len, param->custom_data.data);
+
+            mconfig_ble_connect_timer_delete();
+            mconfig_ble_connect_timer_create();
+
+            ret = mdf_event_loop(MDF_EVENT_MCONFIG_BLUFI_RECV, &param->custom_data);
+            MDF_ERROR_BREAK(ret != MDF_OK, "<%s> mdf_event_loop", mdf_err_to_name(ret));
+            break;
+        }
+
         case ESP_BLUFI_EVENT_RECV_CUSTOM_DATA: {
             bool config_flag = true;
 
@@ -613,7 +618,7 @@ static void mconfig_blufi_event_callback(esp_blufi_cb_event_t event, esp_blufi_c
             mconfig_ble_connect_timer_delete();
 
             if (!g_recv_config) {
-                g_recv_config = MDF_MALLOC(sizeof(mconfig_data_t));
+                g_recv_config = MDF_REALLOC_RETRY(NULL, sizeof(mconfig_data_t));
             }
 
             memset(g_recv_config, 0, sizeof(mconfig_data_t));
@@ -631,7 +636,7 @@ static void mconfig_blufi_event_callback(esp_blufi_cb_event_t event, esp_blufi_c
                     case BLUFI_DATA_CUSTUM:
                         memset(&g_recv_config->custom, 0, sizeof(g_recv_config->custom));
                         memcpy(&g_recv_config->custom, blufi_data->data, MIN(blufi_data->len, sizeof(g_recv_config->custom)));
-                        MDF_LOGD("Data custom: %.*s", blufi_data->len, blufi_data->data);
+                        MDF_LOGD("Data custom: custom: %d, %.*s", sizeof(g_recv_config->custom), blufi_data->len, blufi_data->data);
                         break;
 
                     case BLUFI_DATA_ROUTER_SSID:
@@ -658,7 +663,7 @@ static void mconfig_blufi_event_callback(esp_blufi_cb_event_t event, esp_blufi_c
 
                     case BLUFI_DATA_MESH_ID:
                         if (blufi_data->len != sizeof(g_recv_config->config.mesh_id)
-                                && !MWIFI_ADDR_IS_EMPTY(blufi_data->data)) {
+                                || MWIFI_ADDR_IS_EMPTY(blufi_data->data)) {
                             MDF_LOGW("Mesh id: %s, len: %d", blufi_data->data, blufi_data->len);
                             config_flag = false;
                             break;
@@ -804,7 +809,7 @@ static void mconfig_blufi_event_callback(esp_blufi_cb_event_t event, esp_blufi_c
 
                     case BLUFI_DATA_WHITELIST: {
                         size_t tmp_size = sizeof(mconfig_data_t) + g_recv_config->whitelist_size;
-                        g_recv_config = MDF_REALLOC(g_recv_config, tmp_size + blufi_data->len);
+                        g_recv_config = MDF_REALLOC_RETRY(g_recv_config, tmp_size + blufi_data->len);
 
                         memcpy((uint8_t *)g_recv_config->whitelist_data + g_recv_config->whitelist_size,
                                blufi_data->data, blufi_data->len);
@@ -967,6 +972,19 @@ mdf_err_t mconfig_blufi_deinit()
 
     /**< Send MDF_EVENT_MCONFIG_BLUFI_STOPED event to the event handler */
     mdf_event_loop_send(MDF_EVENT_MCONFIG_BLUFI_STOPED, NULL);
+
+    return MDF_OK;
+}
+
+mdf_err_t mconfig_blufi_send(uint8_t *data, size_t size)
+{
+    MDF_PARAM_CHECK(data);
+    MDF_PARAM_CHECK(size > 0);
+
+    mdf_err_t ret = MDF_OK;
+
+    ret = esp_blufi_send_custom_data(data, size);
+    MDF_ERROR_CHECK(ret != ESP_OK, ret, "esp_bt_controller_disable");
 
     return MDF_OK;
 }

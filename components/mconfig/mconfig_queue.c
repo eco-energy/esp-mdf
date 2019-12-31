@@ -1,26 +1,16 @@
-/*
- * ESPRESSIF MIT License
- *
- * Copyright (c) 2018 <ESPRESSIF SYSTEMS (SHANGHAI) PTE LTD>
- *
- * Permission is hereby granted for use on all ESPRESSIF SYSTEMS products, in which case,
- * it is free of charge, to any person obtaining a copy of this software and associated
- * documentation files (the "Software"), to deal in the Software without restriction, including
- * without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the Software is furnished
- * to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included in all copies or
- * substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
- * FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
- * COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
- * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
- *
- */
+// Copyright 2017 Espressif Systems (Shanghai) PTE LTD
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #include "mconfig_queue.h"
 
@@ -32,6 +22,7 @@ mdf_err_t mconfig_queue_write(const mconfig_data_t *config_data, TickType_t wait
     MDF_PARAM_CHECK(config_data);
 
     mconfig_data_t *q_data = MDF_MALLOC(sizeof(mconfig_data_t) + config_data->whitelist_size);
+    MDF_ERROR_CHECK(!q_data, MDF_ERR_NO_MEM, "");
 
     if (!g_mconfig_queue) {
         g_mconfig_queue = xQueueCreate(1, sizeof(mconfig_data_t *));
@@ -62,7 +53,10 @@ mdf_err_t mconfig_queue_read(mconfig_data_t **config_data, TickType_t wait_ticks
         return MDF_ERR_TIMEOUT;
     }
 
-    *config_data = MDF_MALLOC(sizeof(mconfig_data_t) + q_data->whitelist_size);
+    if (!(*config_data = MDF_MALLOC(sizeof(mconfig_data_t) + q_data->whitelist_size))) {
+        MDF_FREE(q_data);
+        return MDF_ERR_NO_MEM;
+    }
 
     memcpy(*config_data, q_data, sizeof(mconfig_data_t));
     memcpy((*config_data)->whitelist_data, q_data->whitelist_data, q_data->whitelist_size);

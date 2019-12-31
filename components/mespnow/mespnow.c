@@ -1,26 +1,16 @@
-/*
- * ESPRESSIF MIT License
- *
- * Copyright (c) 2018 <ESPRESSIF SYSTEMS (SHANGHAI) PTE LTD>
- *
- * Permission is hereby granted for use on all ESPRESSIF SYSTEMS products, in which case,
- * it is free of charge, to any person obtaining a copy of this software and associated
- * documentation files (the "Software"), to deal in the Software without restriction, including
- * without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the Software is furnished
- * to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included in all copies or
- * substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
- * FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
- * COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
- * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
- *
- */
+// Copyright 2017 Espressif Systems (Shanghai) PTE LTD
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #include "esp_wifi.h"
 #include "esp_now.h"
@@ -81,10 +71,11 @@ static const uint8_t g_oui[MESPNOW_OUI_LEN]                = {0x4E, 0x4F}; /**< 
 
 static EventGroupHandle_t g_event_group                    = NULL;
 static xQueueHandle g_espnow_queue[MESPNOW_TRANS_PIPE_MAX] = {NULL};
-static uint8_t g_espnow_queue_size[MESPNOW_TRANS_PIPE_MAX] = {CONFIG_MESPNOW_TRANS_PIPE_DEBUG_QUEUE_SIZE, 
-                                                                CONFIG_MESPNOW_TRANS_PIPE_CONTROL_QUEUE_SIZE, 
-                                                                CONFIG_MESPNOW_TRANS_PIPE_MCONFIG_QUEUE_SIZE, 
-                                                                CONFIG_MESPNOW_TRANS_PIPE_RESERVED_QUEUE_SIZE};
+static uint8_t g_espnow_queue_size[MESPNOW_TRANS_PIPE_MAX] = {CONFIG_MESPNOW_TRANS_PIPE_DEBUG_QUEUE_SIZE,
+                                                              CONFIG_MESPNOW_TRANS_PIPE_CONTROL_QUEUE_SIZE,
+                                                              CONFIG_MESPNOW_TRANS_PIPE_MCONFIG_QUEUE_SIZE,
+                                                              CONFIG_MESPNOW_TRANS_PIPE_RESERVED_QUEUE_SIZE
+                                                             };
 static uint32_t g_last_magic[MESPNOW_TRANS_PIPE_MAX]       = {0};
 
 /**< callback function of sending ESPNOW data */
@@ -155,6 +146,11 @@ static void mespnow_recv_cb(const uint8_t *addr, const uint8_t *data, int size)
     }
 
     mespnow_queue_data_t *q_data = MDF_MALLOC(sizeof(mespnow_queue_data_t) + size);
+
+    if (!q_data) {
+        return;
+    }
+
     memcpy(q_data->data, data, size);
     memcpy(q_data->addr, addr, ESP_NOW_ETH_ALEN);
 
@@ -237,7 +233,9 @@ mdf_err_t mespnow_write(mespnow_trans_pipe_e pipe, const uint8_t *dest_addr,
         return MDF_ERR_TIMEOUT;
     }
 
-    espnow_data             = MDF_MALLOC(ESP_NOW_MAX_DATA_LEN);
+    espnow_data = MDF_MALLOC(ESP_NOW_MAX_DATA_LEN);
+    MDF_ERROR_CHECK(!espnow_data, MDF_ERR_NO_MEM, "");
+
     espnow_data->pipe       = pipe;
     espnow_data->seq        = 0;
     espnow_data->total_size = write_size;

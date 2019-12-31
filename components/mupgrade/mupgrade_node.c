@@ -1,26 +1,16 @@
-/*
- * ESPRESSIF MIT License
- *
- * Copyright (c) 2018 <ESPRESSIF SYSTEMS (SHANGHAI) PTE LTD>
- *
- * Permission is hereby granted for use on all ESPRESSIF SYSTEMS products, in which case,
- * it is free of charge, to any person obtaining a copy of this software and associated
- * documentation files (the "Software"), to deal in the Software without restriction, including
- * without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the Software is furnished
- * to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included in all copies or
- * substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
- * FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
- * COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
- * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
- *
- */
+// Copyright 2017 Espressif Systems (Shanghai) PTE LTD
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #include "mupgrade.h"
 
@@ -32,7 +22,7 @@ static bool g_upgrade_finished_flag        = false;
 
 static mdf_err_t mupgrade_status(const mupgrade_status_t *status, size_t size)
 {
-    mdf_err_t ret               = MDF_OK;
+    mdf_err_t ret               = MDF_ERR_NO_MEM;
     size_t response_size        = sizeof(mupgrade_status_t);
     mwifi_data_type_t data_type = {
         .upgrade = true
@@ -41,6 +31,7 @@ static mdf_err_t mupgrade_status(const mupgrade_status_t *status, size_t size)
     if (!g_upgrade_config) {
         size_t config_size = sizeof(mupgrade_config_t) + MUPGRADE_PACKET_MAX_NUM / 8;
         g_upgrade_config   = MDF_CALLOC(1, config_size);
+        MDF_ERROR_GOTO(!g_upgrade_config, EXIT, "<MDF_ERR_NO_MEM> g_upgrade_config");
         g_upgrade_config->start_time = xTaskGetTickCount();
 
         mdf_info_load(MUPGRADE_STORE_CONFIG_KEY, g_upgrade_config, &config_size);
@@ -49,7 +40,7 @@ static mdf_err_t mupgrade_status(const mupgrade_status_t *status, size_t size)
     /**< If g_upgrade_config->status has been created and
          once again upgrade the same name bin, just return MDF_OK */
     if (!memcmp(g_upgrade_config->status.name, status->name,
-                 sizeof(g_upgrade_config->status.name))
+                sizeof(g_upgrade_config->status.name))
             && g_upgrade_config->status.total_size == status->total_size) {
         goto EXIT;
     }
@@ -149,6 +140,8 @@ static mdf_err_t mupgrade_write(const mupgrade_packet_t *packet, size_t size)
     if (!g_upgrade_config) {
         size_t config_size = sizeof(mupgrade_config_t) + MUPGRADE_PACKET_MAX_NUM / 8;
         g_upgrade_config   = MDF_CALLOC(1, config_size);
+        MDF_ERROR_CHECK(!g_upgrade_config, MDF_ERR_NO_MEM, "<MDF_ERR_NO_MEM> g_upgrade_config");
+
         g_upgrade_config->start_time = xTaskGetTickCount();
         g_upgrade_config->partition  = esp_ota_get_next_update_partition(NULL);
 
@@ -228,9 +221,14 @@ static mdf_err_t mupgrade_write(const mupgrade_packet_t *packet, size_t size)
         mdf_info_erase(MUPGRADE_STORE_CONFIG_KEY);
 
         const esp_partition_t *update_partition = esp_ota_get_next_update_partition(NULL);
-        g_upgrade_config->status.error_code = esp_ota_set_boot_partition(update_partition);
-        MDF_ERROR_CHECK(g_upgrade_config->status.error_code != MDF_OK,
-                        ret, "esp_ota_set_boot_partition");
+        ret = esp_ota_set_boot_partition(update_partition);
+
+        if (ret != MDF_OK) {
+            g_upgrade_config->status.written_size = 0;
+            g_upgrade_config->status.error_code   = MDF_ERR_MUPGRADE_STOP;
+            MDF_LOGW("<%s> esp_ota_set_boot_partition", mdf_err_to_name(ret));
+            return ret;
+        }
 
         /**< Send MDF_EVENT_MUPGRADE_FINISH event to the event handler */
         mdf_event_loop_send(MDF_EVENT_MUPGRADE_FINISH, NULL);

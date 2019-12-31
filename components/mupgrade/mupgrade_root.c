@@ -1,26 +1,16 @@
-/*
- * ESPRESSIF MIT License
- *
- * Copyright (c) 2018 <ESPRESSIF SYSTEMS (SHANGHAI) PTE LTD>
- *
- * Permission is hereby granted for use on all ESPRESSIF SYSTEMS products, in which case,
- * it is free of charge, to any person obtaining a copy of this software and associated
- * documentation files (the "Software"), to deal in the Software without restriction, including
- * without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the Software is furnished
- * to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included in all copies or
- * substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
- * FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
- * COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
- * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
- *
- */
+// Copyright 2017 Espressif Systems (Shanghai) PTE LTD
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #include "mdf_common.h"
 #include "mupgrade.h"
@@ -61,6 +51,7 @@ mdf_err_t mupgrade_firmware_init(const char *name, size_t size)
 
     if (!g_upgrade_config) {
         g_upgrade_config = MDF_CALLOC(1, sizeof(mupgrade_config_t));
+        MDF_ERROR_CHECK(!g_upgrade_config, MDF_ERR_NO_MEM, "");
     }
 
     g_upgrade_config->start_time          = xTaskGetTickCount();
@@ -146,6 +137,7 @@ mdf_err_t mupgrade_root_handle(const uint8_t *addr, const void *data, size_t siz
                     "Mupgrade has stopped running");
 
     mupgrade_queue_t *q_data = MDF_MALLOC(sizeof(mupgrade_queue_t) + size);
+    MDF_ERROR_CHECK(!q_data, MDF_ERR_NO_MEM, "");
 
     q_data->size = size;
     memcpy(q_data->src_addr, addr, MWIFI_ADDR_LEN);
@@ -207,8 +199,8 @@ static mdf_err_t mupgrade_request_status(uint8_t *progress_array, mupgrade_resul
             }
 
             result->successed_num++;
-            result->successed_addr = MDF_REALLOC(result->successed_addr,
-                                                 result->successed_num * MWIFI_ADDR_LEN);
+            result->successed_addr = MDF_REALLOC_RETRY(result->successed_addr,
+                                     result->successed_num * MWIFI_ADDR_LEN);
             memcpy(result->successed_addr + (result->successed_num - 1) * MWIFI_ADDR_LEN,
                    q_data->src_addr, MWIFI_ADDR_LEN);
         } else if (status->error_code == MDF_ERR_MUPGRADE_STOP) {
@@ -223,7 +215,7 @@ static mdf_err_t mupgrade_request_status(uint8_t *progress_array, mupgrade_resul
     }
 
     request_num   = result->unfinished_num;
-    request_addrs = MDF_MALLOC(result->unfinished_num * MWIFI_ADDR_LEN);
+    request_addrs = MDF_REALLOC_RETRY(NULL, result->unfinished_num * MWIFI_ADDR_LEN);
 
     memcpy(request_addrs, result->unfinished_addr, MWIFI_ADDR_LEN * request_num);
     memset(progress_array, 0xFF, MUPGRADE_PACKET_MAX_NUM / 8);
@@ -272,8 +264,8 @@ static mdf_err_t mupgrade_request_status(uint8_t *progress_array, mupgrade_resul
             /**< The device have not completed firmware upgrade. */
             if (response_status->written_size != response_status->total_size) {
                 result->requested_num++;
-                result->requested_addr = MDF_REALLOC(result->requested_addr,
-                                                     result->requested_num * MWIFI_ADDR_LEN);
+                result->requested_addr = MDF_REALLOC_RETRY(result->requested_addr,
+                                         result->requested_num * MWIFI_ADDR_LEN);
                 memcpy(result->requested_addr + (result->requested_num - 1) * MWIFI_ADDR_LEN,
                        q_data->src_addr, MWIFI_ADDR_LEN);
             }
@@ -288,8 +280,8 @@ static mdf_err_t mupgrade_request_status(uint8_t *progress_array, mupgrade_resul
                 }
 
                 result->successed_num++;
-                result->successed_addr = MDF_REALLOC(result->successed_addr,
-                                                     result->successed_num * MWIFI_ADDR_LEN);
+                result->successed_addr = MDF_REALLOC_RETRY(result->successed_addr,
+                                         result->successed_num * MWIFI_ADDR_LEN);
                 memcpy(result->successed_addr + (result->successed_num - 1) * MWIFI_ADDR_LEN,
                        q_data->src_addr, MWIFI_ADDR_LEN);
             } else {
@@ -349,12 +341,16 @@ mdf_err_t mupgrade_firmware_send(const uint8_t *addrs_list, size_t addrs_num,
     MDF_ERROR_CHECK(g_upgrade_config->status.error_code != MDF_ERR_MUPGRADE_FIRMWARE_FINISH,
                     MDF_ERR_MUPGRADE_FIRMWARE_INCOMPLETE, "mupgrade_firmware_download");
 
-    mdf_err_t ret             = MDF_OK;
+    mdf_err_t ret             = MDF_ERR_NO_MEM;
     mwifi_data_type_t type    = {.upgrade = true, .communicate = MWIFI_COMMUNICATE_MULTICAST};
     mupgrade_packet_t *packet = MDF_MALLOC(sizeof(mupgrade_packet_t));
     uint8_t *progress_array   = MDF_MALLOC(MUPGRADE_PACKET_MAX_NUM / 8);
     mupgrade_result_t *result = MDF_CALLOC(1, sizeof(mupgrade_result_t));
     g_mupgrade_send_running_flag = true;
+
+    MDF_ERROR_GOTO(!packet, EXIT, "");
+    MDF_ERROR_GOTO(!progress_array, EXIT, "");
+    MDF_ERROR_GOTO(!result, EXIT, "");
 
     /**
      * @brief If addrs_list is MWIFI_ADDR_ANY or MWIFI_ADDR_BROADCAST,
@@ -363,6 +359,7 @@ mdf_err_t mupgrade_firmware_send(const uint8_t *addrs_list, size_t addrs_num,
     if (MWIFI_ADDR_IS_ANY(addrs_list) || MWIFI_ADDR_IS_BROADCAST(addrs_list)) {
         result->unfinished_num  = esp_mesh_get_routing_table_size();
         result->unfinished_addr = MDF_MALLOC(result->unfinished_num * MWIFI_ADDR_LEN);
+        MDF_ERROR_GOTO(!result->unfinished_addr, EXIT, "");
         ret = esp_mesh_get_routing_table((mesh_addr_t *)result->unfinished_addr,
                                          result->unfinished_num * MWIFI_ADDR_LEN,
                                          (int *)&result->unfinished_num);
@@ -382,6 +379,7 @@ mdf_err_t mupgrade_firmware_send(const uint8_t *addrs_list, size_t addrs_num,
     } else {
         result->unfinished_num  = addrs_num;
         result->unfinished_addr = MDF_MALLOC(result->unfinished_num * MWIFI_ADDR_LEN);
+        MDF_ERROR_GOTO(!result->unfinished_addr, EXIT, "");
         memcpy(result->unfinished_addr, addrs_list, result->unfinished_num * MWIFI_ADDR_LEN);
     }
 
@@ -425,15 +423,22 @@ mdf_err_t mupgrade_firmware_send(const uint8_t *addrs_list, size_t addrs_num,
                 for (mupgrade_queue_t *q_data = NULL; xQueueReceive(g_upgrade_config->queue, &q_data, 0);) {
                     mupgrade_status_t *status = (mupgrade_status_t *)q_data->data;
 
-                    if (status->written_size == status->total_size) {
-                        ret = addrs_remove(result->unfinished_addr, &result->unfinished_num, q_data->src_addr);
-                        MDF_ERROR_CONTINUE(ret != true, "The device has been removed from the list waiting for the upgrade");
-                        ret = addrs_remove(result->requested_addr, &result->requested_num, q_data->src_addr);
-                        MDF_ERROR_CONTINUE(ret != true, "The device has been removed from the list of data sent for upgrade");
+                    if (!status->written_size && (status->written_size == status->total_size)) {
+                        if (!addrs_remove(result->unfinished_addr, &result->unfinished_num, q_data->src_addr)) {
+                            MDF_LOGW("The device has been removed from the list waiting for the upgrade");
+                            MDF_FREE(q_data);
+                            continue;
+                        }
+
+                        if (!addrs_remove(result->requested_addr, &result->requested_num, q_data->src_addr)) {
+                            MDF_LOGW("The device has been removed from the list of data sent for upgrade");
+                            MDF_FREE(q_data);
+                            continue;
+                        }
 
                         result->successed_num++;
-                        result->successed_addr = MDF_REALLOC(result->successed_addr,
-                                                             result->successed_num * MWIFI_ADDR_LEN);
+                        result->successed_addr = MDF_REALLOC_RETRY(result->successed_addr,
+                                                 result->successed_num * MWIFI_ADDR_LEN);
                         memcpy(result->successed_addr + (result->successed_num - 1) * MWIFI_ADDR_LEN,
                                q_data->src_addr, MWIFI_ADDR_LEN);
                     } else if (status->error_code == MDF_ERR_MUPGRADE_STOP) {
@@ -478,6 +483,8 @@ EXIT:
 
     ret = (result->unfinished_num > 0) ? MDF_ERR_MUPGRADE_FIRMWARE_INCOMPLETE : MDF_OK;
     g_mupgrade_send_running_flag = false;
+
+    mdf_event_loop_send(MDF_EVENT_MUPGRADE_SEND_FINISH, (void *)ret);
 
     if (res) {
         memcpy(res, result, sizeof(mupgrade_result_t));

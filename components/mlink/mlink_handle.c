@@ -1,26 +1,16 @@
-/*
- * ESPRESSIF MIT License
- *
- * Copyright (c) 2018 <ESPRESSIF SYSTEMS (SHANGHAI) PTE LTD>
- *
- * Permission is hereby granted for use on all ESPRESSIF SYSTEMS products, in which case,
- * it is free of charge, to any person obtaining a copy of this software and associated
- * documentation files (the "Software"), to deal in the Software without restriction, including
- * without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the Software is furnished
- * to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included in all copies or
- * substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
- * FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
- * COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
- * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
- *
- */
+// Copyright 2017 Espressif Systems (Shanghai) PTE LTD
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #include "mlink.h"
 #include "mwifi.h"
@@ -62,7 +52,7 @@ typedef struct {
     uint32_t tid;                             /**< The identifier of the device type */
     char name[32];                            /**< The name of the device */
     char position[32];                        /**< The position the device */
-    char version[16];                         /**< The version of the device */
+    char version[32];                         /**< The version of the device */
     uint8_t characteristics_num;              /**< The number of device attributes */
     mlink_characteristics_t *characteristics; /**< The characteristics of the device */
 } mlink_device_t;
@@ -87,6 +77,7 @@ mdf_err_t mlink_add_device(uint32_t tid, const char *name, const char *version)
 
     if (!g_device_info) {
         g_device_info = MDF_MALLOC(sizeof(mlink_device_t));
+        MDF_ERROR_CHECK(!g_device_info, MDF_ERR_NO_MEM, "");
     }
 
     memset(g_device_info, 0, sizeof(mlink_device_t));
@@ -179,6 +170,7 @@ mdf_err_t mlink_add_characteristic(uint16_t cid, const char *name, characteristi
 
     g_device_info->characteristics = MDF_REALLOC(g_device_info->characteristics,
                                      (g_device_info->characteristics_num + 1) * sizeof(mlink_characteristics_t));
+    MDF_ERROR_CHECK(!g_device_info->characteristics, MDF_ERR_NO_MEM, "");
     mlink_characteristics_t *characteristics = g_device_info->characteristics + g_device_info->characteristics_num;
 
     characteristics->cid    = cid;
@@ -220,6 +212,8 @@ mdf_err_t mlink_add_characteristic_handle(mlink_characteristic_func_t get_value_
 
     if (mdf_info_load("group_num", &group_num, sizeof(ssize_t)) == MDF_OK) {
         mesh_addr_t *group_list = MDF_MALLOC(sizeof(mesh_addr_t) * group_num);
+        MDF_ERROR_CHECK(!group_list, MDF_ERR_NO_MEM, "");
+
         mdf_info_load("group_list", group_list, sizeof(mesh_addr_t) * group_num);
 
         ret = esp_mesh_set_group_id((mesh_addr_t *)group_list, group_num);
@@ -263,6 +257,9 @@ static mdf_err_t mlink_handle_get_info(mlink_handle_data_t *handle_data)
     handle_data->resp_data       = NULL;
     char *characteristics_list   = NULL;
     characteristic_value_t value = {0};
+    mesh_addr_t parent_bssid     = {0};
+    uint8_t parent_mac[6]        = {0};
+    uint8_t self_mac[6]          = {0};
     mlink_characteristics_t *characteristic = g_device_info->characteristics;
 
     const char *characteristic_format_int =
@@ -273,7 +270,7 @@ static mdf_err_t mlink_handle_get_info(mlink_handle_data_t *handle_data)
         "\"perms\":%d,\"value\":%lf,\"min\":%d,\"max\":%d,\"step\":%d}";
     const char *characteristic_format_string =
         "{\"cid\":%d,\"name\":\"%s\",\"format\":\"string\","
-        "\"perms\":%d,\"value\":%s,\"min\":%d,\"max\":%d,\"step\":%d}";
+        "\"perms\":%d,\"value\":\"%s\",\"min\":%d,\"max\":%d,\"step\":%d}";
 
     ESP_ERROR_CHECK(esp_mesh_get_id(&mesh_id));
 
@@ -282,9 +279,20 @@ static mdf_err_t mlink_handle_get_info(mlink_handle_data_t *handle_data)
     }
 
     sprintf(tmp_str, "%d", g_device_info->tid);
+    esp_mesh_get_parent_bssid(&parent_bssid);
+
+    if (esp_mesh_get_layer() == MESH_ROOT) {
+        memcpy(parent_mac, parent_bssid.addr, 6);
+    } else {
+        mlink_mac_ap2sta(parent_bssid.addr, parent_mac);
+    }
+
+    esp_wifi_get_mac(ESP_IF_WIFI_STA, self_mac);
 
     mlink_json_pack(&handle_data->resp_data, "tid", tmp_str);
     mlink_json_pack(&handle_data->resp_data, "name", g_device_info->name);
+    mlink_json_pack(&handle_data->resp_data, "self_mac", mlink_mac_hex2str(self_mac, tmp_str));
+    mlink_json_pack(&handle_data->resp_data, "parent_mac",  mlink_mac_hex2str(parent_mac, tmp_str));
     mlink_json_pack(&handle_data->resp_data, "mesh_id", mlink_mac_hex2str(mesh_id.addr, tmp_str));
     mlink_json_pack(&handle_data->resp_data, "version", g_device_info->version);
     mlink_json_pack(&handle_data->resp_data, "idf_version", esp_get_idf_version());
@@ -301,6 +309,7 @@ static mdf_err_t mlink_handle_get_info(mlink_handle_data_t *handle_data)
 
     if (group_num > 0) {
         mesh_addr_t *group_list = MDF_MALLOC(sizeof(mesh_addr_t) * group_num);
+        MDF_ERROR_CHECK(!group_list, MDF_ERR_NO_MEM, "");
 
         if (esp_mesh_get_group_list(group_list, group_num) == MDF_OK) {
             char *group_str = NULL;
@@ -343,7 +352,7 @@ static mdf_err_t mlink_handle_get_info(mlink_handle_data_t *handle_data)
             }
 
             case CHARACTERISTIC_FORMAT_STRING: {
-                ret = mlink_device_get_value(characteristic[i].cid, value.value_string);
+                ret = mlink_device_get_value(characteristic[i].cid, &value.value_string);
                 MDF_ERROR_CONTINUE(ret != MDF_OK, "Get the value of the device's cid: %d", characteristic[i].cid);
 
                 asprintf(&tmp_str, characteristic_format_string, characteristic[i].cid, characteristic[i].name,
@@ -406,7 +415,7 @@ static mdf_err_t mlink_handle_get_status(mlink_handle_data_t *handle_data)
                 break;
 
             case CHARACTERISTIC_FORMAT_STRING:
-                ret = mlink_device_get_value(cids[i], value.value_string);
+                ret = mlink_device_get_value(cids[i], &value.value_string);
                 MDF_ERROR_BREAK(ret < 0, "<%s> mlink_device_get_value", mdf_err_to_name(ret));
                 mlink_json_pack(&tmp_str, "cid", cids[i]);
                 mlink_json_pack(&tmp_str, "value", value.value_string);
@@ -440,23 +449,8 @@ static mdf_err_t mlink_handle_set_status(mlink_handle_data_t *handle_data)
     int cid         = 0;
     mdf_err_t ret   = MDF_OK;
     size_t cids_num = 0;
-    char tsf_time_str[16] = {0x0};
     characteristic_value_t value = {0};
     char *characteristics_list[CHARACTERISTICS_MAX_NUM] = {NULL};
-
-    /**
-     * @brief If `tsf_time_us` is included, the device will delay running set commands
-     */
-    if (mlink_json_parse(handle_data->req_data, "tsf_time_us", tsf_time_str) == MDF_OK) {
-        uint64_t tsf_time_us = 0;
-        scanf(tsf_time_str, "%llu", &tsf_time_us);
-
-        int64_t delay_running = (tsf_time_us - esp_mesh_get_tsf_time()) / 1000;
-
-        if (delay_running > 0 && delay_running < 3 * 1000) {
-            vTaskDelay(pdMS_TO_TICKS(delay_running));
-        }
-    }
 
     ret = mlink_json_parse(handle_data->req_data, "characteristics", &cids_num);
     MDF_ERROR_CHECK(ret != MDF_OK, ret, "Parse the json formatted string");
@@ -478,21 +472,22 @@ static mdf_err_t mlink_handle_set_status(mlink_handle_data_t *handle_data)
                 ret = mlink_json_parse(characteristics_list[i], "value", &value.value_int);
                 MDF_ERROR_BREAK(ret != MDF_OK, "<%s> Parse the json formatted string", mdf_err_to_name(ret));
                 ret = mlink_device_set_value(cid, &value.value_int);
-                MDF_ERROR_BREAK(ret != MDF_OK, "<%s> Parse the json formatted string", mdf_err_to_name(ret));
+                MDF_ERROR_BREAK(ret != MDF_OK, "<%s> mlink_device_set_value, cid: %d, value: %d", mdf_err_to_name(ret), cid, value.value_int);
                 break;
 
             case CHARACTERISTIC_FORMAT_DOUBLE:
                 ret = mlink_json_parse(characteristics_list[i], "value", &value.value_double);
                 MDF_ERROR_BREAK(ret != MDF_OK, "<%s> Parse the json formatted string", mdf_err_to_name(ret));
                 ret = mlink_device_set_value(cid, &value.value_double);
-                MDF_ERROR_BREAK(ret != MDF_OK, "<%s> Parse the json formatted string", mdf_err_to_name(ret));
+                MDF_ERROR_BREAK(ret != MDF_OK, "<%s> mlink_device_set_value, cid: %d, value: %f", mdf_err_to_name(ret), cid, value.value_double);
                 break;
 
             case CHARACTERISTIC_FORMAT_STRING:
-                ret = mlink_json_parse(characteristics_list[i], "value", value.value_string);
+                ret = mlink_json_parse(characteristics_list[i], "value", &value.value_string);
                 MDF_ERROR_BREAK(ret != MDF_OK, "<%s> Parse the json formatted string", mdf_err_to_name(ret));
                 ret = mlink_device_set_value(cid, value.value_string);
-                MDF_ERROR_BREAK(ret != MDF_OK, "<%s> Parse the json formatted string", mdf_err_to_name(ret));
+                MDF_FREE(value.value_string);
+                MDF_ERROR_BREAK(ret != MDF_OK, "<%s> mlink_device_set_value,", mdf_err_to_name(ret));
                 break;
 
             default:
@@ -516,7 +511,9 @@ static mdf_err_t mlink_handle_add_device(mlink_handle_data_t *handle_data)
     uint32_t duration_ms         = 30000;
     int8_t rssi                  = -120;
 
+    ret = MDF_ERR_NO_MEM;
     mconfig_data_t *mconfig_data = MDF_CALLOC(1, sizeof(mconfig_data_t));
+    MDF_ERROR_GOTO(!mconfig_data, EXIT, "");
 
     ret = mwifi_get_config(&mconfig_data->config);
     MDF_ERROR_GOTO(ret != MDF_OK, EXIT, "<%s> Get the configuration of the AP", mdf_err_to_name(ret));
@@ -527,12 +524,16 @@ static mdf_err_t mlink_handle_add_device(mlink_handle_data_t *handle_data)
     ret = mlink_json_parse(handle_data->req_data, "whitelist", &whitelist_num);
     MDF_ERROR_GOTO(ret != MDF_OK, EXIT, "Parse the json formatted string: whitelist");
 
+    ret = MDF_ERR_NO_MEM;
     whitelist_json = MDF_CALLOC(whitelist_num, sizeof(char *));
+    MDF_ERROR_GOTO(!whitelist_json, EXIT, "");
     ret = mlink_json_parse(handle_data->req_data, "whitelist", whitelist_json);
     MDF_ERROR_GOTO(ret != MDF_OK, EXIT, "Parse the json formatted string: whitelist");
 
+    ret = MDF_ERR_NO_MEM;
     mconfig_data->whitelist_size = whitelist_num * sizeof(mconfig_whitelist_t);
     mconfig_data = MDF_REALLOC(mconfig_data, sizeof(mconfig_data_t) + mconfig_data->whitelist_size);
+    MDF_ERROR_GOTO(!mconfig_data, EXIT, "<MDF_ERR_NO_MEM> MDF_REALLOC mconfig_data");
 
     for (int i = 0; i < whitelist_num && i < CONFIG_MWIFI_CAPACITY_NUM; ++i) {
         mlink_mac_str2hex(whitelist_json[i], (mconfig_data->whitelist_data + i)->addr);
@@ -662,7 +663,7 @@ static mdf_err_t mlink_handle_set_config(mlink_handle_data_t *handle_data)
     if (mlink_json_parse(handle_data->req_data, "beacon_interval", &data) == ESP_OK) {
         ret = esp_mesh_set_beacon_interval(data);
         MDF_ERROR_CHECK(ret < 0, ESP_FAIL, "esp_mesh_set_beacon_interval, ret: %d", ret);
-        MDF_LOGI("ESP-MESH beacon interval: %d ms", data);
+        MDF_LOGI("ESP-WIFI-MESH beacon interval: %d ms", data);
     }
 
     if (mlink_json_parse(handle_data->req_data, "log_level", &data) == ESP_OK) {
@@ -684,6 +685,7 @@ static mdf_err_t mlink_handle_set_group(mlink_handle_data_t *handle_data)
     MDF_ERROR_GOTO(ret != MDF_OK, EXIT, "Parse the json formatted string: group");
 
     group_json = MDF_CALLOC(group_num, sizeof(char *));
+    MDF_ERROR_CHECK(!group_json, MDF_ERR_NO_MEM, "");
     ret = mlink_json_parse(handle_data->req_data, "group", group_json);
     MDF_ERROR_GOTO(ret != MDF_OK, EXIT, "Parse the json formatted string: group");
 
@@ -700,6 +702,8 @@ static mdf_err_t mlink_handle_set_group(mlink_handle_data_t *handle_data)
     do {
         ssize_t group_num = esp_mesh_get_group_num();
         mesh_addr_t *group_list = MDF_MALLOC(sizeof(mesh_addr_t) * group_num);
+        MDF_ERROR_GOTO(!group_list, EXIT, "");
+
         esp_mesh_get_group_list(group_list, group_num);
         mdf_info_save("group_num", &group_num, sizeof(ssize_t));
         mdf_info_save("group_list", group_list, sizeof(mesh_addr_t) * group_num);
@@ -718,6 +722,7 @@ static mdf_err_t mlink_handle_get_group(mlink_handle_data_t *handle_data)
 
     if (group_num) {
         mesh_addr_t *group_list = MDF_MALLOC(sizeof(mesh_addr_t) * group_num);
+        MDF_ERROR_CHECK(!group_list, MDF_ERR_NO_MEM, "");
 
         if (esp_mesh_get_group_list(group_list, group_num) == MDF_OK) {
             char *group_str = NULL;
@@ -735,7 +740,7 @@ static mdf_err_t mlink_handle_get_group(mlink_handle_data_t *handle_data)
         MDF_FREE(group_list);
     }
 
-    handle_data->resp_size = strlen(handle_data->resp_data);
+    handle_data->resp_size = (handle_data->resp_data == NULL) ? 0 : strlen(handle_data->resp_data);
 
     return ESP_OK;
 }
@@ -768,6 +773,8 @@ static mdf_err_t mlink_handle_remove_group(mlink_handle_data_t *handle_data)
 
         if (group_num > 0) {
             mesh_addr_t *group_list = MDF_MALLOC(sizeof(mesh_addr_t) * group_num);
+            MDF_ERROR_GOTO(!group_list, EXIT, "");
+
             esp_mesh_get_group_list(group_list, group_num);
             mdf_info_save("group_num", &group_num, sizeof(ssize_t));
             mdf_info_save("group_list", group_list, sizeof(mesh_addr_t) * group_num);

@@ -1,26 +1,17 @@
-/*
- * ESPRESSIF MIT License
- *
- * Copyright (c) 2018 <ESPRESSIF SYSTEMS (SHANGHAI) PTE LTD>
- *
- * Permission is hereby granted for use on all ESPRESSIF SYSTEMS products, in which case,
- * it is free of charge, to any person obtaining a copy of this software and associated
- * documentation files (the "Software"), to deal in the Software without restriction, including
- * without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the Software is furnished
- * to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included in all copies or
- * substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
- * FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
- * COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
- * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
- *
- */
+// Copyright 2017 Espressif Systems (Shanghai) PTE LTD
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #ifndef __MDF_ESPNOW_DEBUG_H__
 #define __MDF_ESPNOW_DEBUG_H__
 
@@ -29,13 +20,6 @@
 #ifdef __cplusplus
 extern "C" {
 #endif /**< _cplusplus */
-
-/**
- * @brief Log sending configuration
- */
-typedef struct {
-    uint8_t dest_addr[6]; /**< Turn off log sending if all is zero */
-} mdebug_log_config_t;
 
 /**
  * @brief Type of data sent during wireless debugging
@@ -60,7 +44,7 @@ enum {
  */
 typedef struct {
     uint8_t type;  /**< Type of packet */
-    int16_t size;  /**< size of data */
+    int16_t size;  /**< Size of data */
     int16_t seq;   /**< Sequence */
     uint8_t data[230]; /**< data */
 }  __attribute__((packed)) mdebug_coredump_packet_t;
@@ -76,6 +60,15 @@ typedef struct {
  *     - MDF_FAIL
  */
 mdf_err_t mdebug_espnow_init(void);
+
+/**
+ * @brief  De-initialize the wireless debug receiver
+ *
+ * @return
+ *     - MDF_OK
+ *     - MDF_FAIL
+ */
+mdf_err_t mdebug_espnow_deinit(void);
 
 /**
  * @brief  Send debug data with ESP-NOW
@@ -96,7 +89,7 @@ mdf_err_t mdebug_espnow_write(const uint8_t *dest_addr, const void *data, size_t
 /**
  * @brief  receive debug data with ESP-NOW
  *
- * @param  dest_addr  Destination address
+ * @param  src_addr  Destination address
  * @param  data       Point to send data buffer
  * @param  size       send data len
  * @param  type       Type of data
@@ -109,30 +102,8 @@ mdf_err_t mdebug_espnow_write(const uint8_t *dest_addr, const void *data, size_t
 mdf_err_t mdebug_espnow_read(uint8_t *src_addr, void *data, size_t *size,
                              mdebug_espnow_t *type, TickType_t wait_ticks);
 
-
-/**
- * @brief  Get the configuration of the log during wireless debugging
- *
- * @param  config The configuration of the log
- *
- * @return
- *     - MDF_OK
- *     - MDF_FAIL
- */
-mdf_err_t mdebug_log_get_config(mdebug_log_config_t *config);
-
-/**
- * @brief  Set the configuration of the log during wireless debugging
- *
- * @param  config The configuration of the log
- *
- * @return
- *     - MDF_OK
- *     - MDF_FAIL
- */
-mdf_err_t mdebug_log_set_config(const mdebug_log_config_t *config);
-
 #ifdef __cplusplus
 }
 #endif /**< _cplusplus */
+
 #endif /**< __MDF_ESPNOW_DEBUG_H__ */

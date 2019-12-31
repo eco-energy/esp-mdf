@@ -1,26 +1,16 @@
-/*
- * ESPRESSIF MIT License
- *
- * Copyright (c) 2018 <ESPRESSIF SYSTEMS (SHANGHAI) PTE LTD>
- *
- * Permission is hereby granted for use on all ESPRESSIF SYSTEMS products, in which case,
- * it is free of charge, to any person obtaining a copy of this software and associated
- * documentation files (the "Software"), to deal in the Software without restriction, including
- * without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the Software is furnished
- * to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included in all copies or
- * substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
- * FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
- * COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
- * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
- *
- */
+// Copyright 2017 Espressif Systems (Shanghai) PTE LTD
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #ifndef __MWIFI_H__
 #define __MWIFI_H__
@@ -30,36 +20,8 @@
 #include "esp_mesh_internal.h"
 
 #ifdef __cplusplus
-
-/*
- *@brief Next templates makes gnu builtin: __builtin_types_compatible_p
- *       compatible with C++ compilation
- */
-template<typename T, typename U>
-struct is_same {
-    static const int value = 0;
-};
-
-template<typename T>
-struct is_same<T, T> {
-    static const int value = 1;
-};
-
-template<typename T, typename U>
-int cxx_is_compatible()
-{
-    return is_same<T, U>::value;
-}
-
-/**
- * @brief Macro adaptation for C++ compilation, using previous C++ templates for type checking
- */
-#define builtin_types_compatible_p(data, type)  cxx_is_compatible<decltype(data),type>()
 extern "C" {
-#else
-#define builtin_types_compatible_p(data, type)  __builtin_types_compatible_p(typeof(data), type)
 #endif /**< _cplusplus */
-
 
 #define MWIFI_PAYLOAD_LEN       (1456) /**< Max payload size(in bytes) */
 
@@ -306,7 +268,7 @@ esp_err_t esp_wifi_vnd_mesh_get(mesh_assoc_t *mesh_assoc);
  *    - MDF_ERR_MWIFI_NOT_INIT
  *    - MDF_ERR_MWIFI_INITED
  */
-mdf_err_t mwifi_init(mwifi_init_config_t *config);
+mdf_err_t mwifi_init(const mwifi_init_config_t *config);
 
 
 /**
@@ -332,7 +294,7 @@ mdf_err_t mwifi_deinit(void);
  *    - MDF_OK
  *    - MDF_ERR_MWIFI_ARGUMENT
  */
-mdf_err_t mwifi_set_init_config(mwifi_init_config_t *init_config);
+mdf_err_t mwifi_set_init_config(const mwifi_init_config_t *init_config);
 
 /**
  * @brief  Get Mwifi init configuration.
@@ -354,7 +316,7 @@ mdf_err_t mwifi_get_init_config(mwifi_init_config_t *init_config);
  *    - MDF_OK
  *    - MDF_ERR_MWIFI_ARGUMENT
  */
-mdf_err_t mwifi_set_config(mwifi_config_t *config);
+mdf_err_t mwifi_set_config(const mwifi_config_t *config);
 
 /**
  * @brief  Get the configuration of the AP
@@ -423,7 +385,7 @@ void mwifi_print_config();
  * @brief  Send a packet to any node in the mesh network.
  *
  * @attention 1. If data encryption is enabled, you must ensure that the task that
- *               calls this function is greater than 8KB.
+ *               calls this function is greater than 4KB.
  *            2. When sending data to the root node, if the destination address
  *               is NULL, the root node receives it using mwifi_root_read(). If
  *               the destination address is the mac address of the root node or MWIFI_ADDR_ROOT, the
@@ -475,6 +437,8 @@ mdf_err_t __mwifi_read(uint8_t *src_addr, mwifi_data_type_t *data_type, void *da
     __mwifi_read(src_addr, data_type, (void *)data, size, wait_ticks, \
                  builtin_types_compatible_p(data, char *) * MWIFI_DATA_MEMORY_MALLOC_EXTERNAL \
                  + builtin_types_compatible_p(data, uint8_t *) * MWIFI_DATA_MEMORY_MALLOC_EXTERNAL \
+                 + builtin_types_compatible_p(data, char []) * MWIFI_DATA_MEMORY_MALLOC_EXTERNAL \
+                 + builtin_types_compatible_p(data, uint8_t []) * MWIFI_DATA_MEMORY_MALLOC_EXTERNAL \
                  + builtin_types_compatible_p(data, char **) * MWIFI_DATA_MEMORY_MALLOC_INTERNAL \
                  + builtin_types_compatible_p(data, uint8_t **) * MWIFI_DATA_MEMORY_MALLOC_INTERNAL)
 

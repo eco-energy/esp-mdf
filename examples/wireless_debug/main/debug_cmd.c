@@ -1,26 +1,16 @@
-/*
- * ESPRESSIF MIT License
- *
- * Copyright (c) 2018 <ESPRESSIF SYSTEMS (SHANGHAI) PTE LTD>
- *
- * Permission is hereby granted for use on all ESPRESSIF SYSTEMS products, in which case,
- * it is free of charge, to any person obtaining a copy of this software and associated
- * documentation files (the "Software"), to deal in the Software without restriction, including
- * without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the Software is furnished
- * to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included in all copies or
- * substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
- * FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
- * COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
- * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
- *
- */
+// Copyright 2017 Espressif Systems (Shanghai) PTE LTD
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #include "esp_console.h"
 #include "argtable3/argtable3.h"
@@ -299,7 +289,7 @@ static int wifi_config_func(int argc, char **argv)
     if (strlen((char *)wifi_config.sta.ssid)) {
         ESP_ERROR_CHECK(esp_wifi_set_config(ESP_IF_WIFI_STA, &wifi_config));
         ESP_ERROR_CHECK(esp_wifi_connect());
-    } else {
+    } else if(wifi_config.sta.channel > 0 && wifi_config.sta.channel <= 14){
         ESP_ERROR_CHECK(esp_wifi_set_channel(wifi_config.sta.channel, WIFI_SECOND_CHAN_NONE));
         MDF_LOGI("Set primary/secondary channel of ESP32, channel: %d", wifi_config.sta.channel);
     }
@@ -323,7 +313,7 @@ void register_wifi_config()
     wifi_config_args.ssid     = arg_str0("s", "ssid", "<ssid>", "SSID of router");
     wifi_config_args.password = arg_str0("p", "password", "<password>", "Password of router");
     wifi_config_args.bssid    = arg_str0("b", "bssid", "<bssid (xx:xx:xx:xx:xx:xx)>", "BSSID of router");
-    wifi_config_args.channel  = arg_int0("c", "channel", "<channel (1 ~ 13)>", "Channel of ESP-MESH and router");
+    wifi_config_args.channel  = arg_int0("c", "channel", "<channel (1 ~ 13)>", "Channel of ESP-WIFI-MESH and router");
     wifi_config_args.save     = arg_lit0("S", "save", "Save Wi-Fi configuration information");
     wifi_config_args.erase    = arg_lit0("E", "Erase", "Erase Wi-Fi configuration information");
     wifi_config_args.end      = arg_end(4);
@@ -418,13 +408,13 @@ static esp_err_t wifi_scan_func(int argc, char **argv)
         }
 
         ret = mwifi_set_init_config(&networking_config);
-        MDF_ERROR_CHECK(ret != MDF_OK, ESP_ERR_INVALID_ARG, "ESP-MESH networking parameter error");
+        MDF_ERROR_CHECK(ret != MDF_OK, ESP_ERR_INVALID_ARG, "ESP-WIFI-MESH networking parameter error");
 
         ret = mwifi_set_config(&ap_config);
-        MDF_ERROR_CHECK(ret != MDF_OK, ESP_ERR_INVALID_ARG, "ESP-MESH's AP configuration parameter error");
+        MDF_ERROR_CHECK(ret != MDF_OK, ESP_ERR_INVALID_ARG, "ESP-WIFI-MESH's AP configuration parameter error");
 
         ret = mwifi_restart();
-        MDF_ERROR_CHECK(ret != MDF_OK, ESP_ERR_INVALID_ARG, "restart ESP-MESH");
+        MDF_ERROR_CHECK(ret != MDF_OK, ESP_ERR_INVALID_ARG, "restart ESP-WIFI-MESH");
 
         ESP_ERROR_CHECK(esp_mesh_set_self_organized(false, false));
 
@@ -498,7 +488,7 @@ void register_wifi_scan()
     wifi_scan_args.passive = arg_int0("p", "passive", "<time (ms)>", "Passive scan time per channel");
     wifi_scan_args.mesh    = arg_lit0("m", "mesh", "Scanning mesh device");
     wifi_scan_args.mesh_id        = arg_str0("i", "mesh_id", "<mesh_id (xx:xx:xx:xx:xx:xx)>", "Mesh network ID");
-    wifi_scan_args.mesh_password  = arg_str0("P", "mesh_password", "<mesh_password>", "Password for secure communication between devices in ESP-MESH");
+    wifi_scan_args.mesh_password  = arg_str0("P", "mesh_password", "<mesh_password>", "Password for secure communication between devices in ESP-WIFI-MESH");
     wifi_scan_args.end     = arg_end(5);
 
     const esp_console_cmd_t cmd = {
